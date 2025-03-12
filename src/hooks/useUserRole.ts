@@ -46,7 +46,8 @@ export const useUserRole = (): UserRoleData => {
           .single();
         
         setRole(roleData?.role || "user");
-        setGroup(roleData?.groups?.name || null);
+        // Fix for TypeScript error - access the first item in the groups array if it exists
+        setGroup(roleData?.groups && Array.isArray(roleData.groups) && roleData.groups[0]?.name || null);
       } catch (err) {
         console.error("Error fetching user role:", err);
         setError(err instanceof Error ? err : new Error("Failed to fetch user role"));
@@ -67,7 +68,8 @@ export const useUserRole = (): UserRoleData => {
           .single();
         
         setRole(roleData?.role || "user");
-        setGroup(roleData?.groups?.name || null);
+        // Fix for TypeScript error - access the first item in the groups array if it exists
+        setGroup(roleData?.groups && Array.isArray(roleData.groups) && roleData.groups[0]?.name || null);
       } else {
         setRole(null);
         setGroup(null);
