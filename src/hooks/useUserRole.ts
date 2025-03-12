@@ -39,12 +39,14 @@ export const useUserRole = (): UserRoleData => {
 
         setUser(user);
         
-        // Access the role from the user metadata
-        const userRole = user.user_metadata?.role as UserRole;
-        const userGroup = user.user_metadata?.group as UserGroup;
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role, groups(name)')
+          .eq('user_id', user.id)
+          .single();
         
-        setRole(userRole || "user"); // Default to 'user' if no role specified
-        setGroup(userGroup);
+        setRole(roleData?.role || "user");
+        setGroup(roleData?.groups?.name || null);
       } catch (err) {
         console.error("Error fetching user role:", err);
         setError(err instanceof Error ? err : new Error("Failed to fetch user role"));
@@ -55,15 +57,17 @@ export const useUserRole = (): UserRoleData => {
 
     fetchUserData();
 
-    // Subscribe to auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         setUser(session.user);
-        const userRole = session.user.user_metadata?.role as UserRole;
-        const userGroup = session.user.user_metadata?.group as UserGroup;
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role, groups(name)')
+          .eq('user_id', session.user.id)
+          .single();
         
-        setRole(userRole || "user");
-        setGroup(userGroup);
+        setRole(roleData?.role || "user");
+        setGroup(roleData?.groups?.name || null);
       } else {
         setRole(null);
         setGroup(null);
