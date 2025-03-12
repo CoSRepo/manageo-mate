@@ -28,7 +28,12 @@ export const useUserRole = (): UserRoleData => {
         setIsLoading(true);
         setError(null);
 
-        const { data: { user } } = await supabase.auth.getUser();
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        
+        if (userError) {
+          throw userError;
+        }
         
         if (!user) {
           setRole(null);
@@ -39,18 +44,40 @@ export const useUserRole = (): UserRoleData => {
 
         setUser(user);
         
-        const { data: roleData } = await supabase
+        // Query the user_roles table directly with the user's ID
+        // This takes advantage of the RLS policies we just set up
+        const { data: roleData, error: roleError } = await supabase
           .from('user_roles')
-          .select('role, groups(name)')
+          .select('role, group_id')
           .eq('user_id', user.id)
           .single();
         
-        setRole(roleData?.role || "user");
-        // Fix for TypeScript error - access the first item in the groups array if it exists
-        setGroup(roleData?.groups && Array.isArray(roleData.groups) && roleData.groups[0]?.name || null);
+        if (roleError && roleError.code !== 'PGRST116') { // PGRST116 is "no rows returned" which is okay
+          console.warn("Error fetching user role:", roleError);
+          // Default to "user" role if there's an error
+          setRole("user");
+        } else if (roleData) {
+          setRole(roleData.role || "user");
+          
+          // If we have a group_id, fetch the group name
+          if (roleData.group_id) {
+            const { data: groupData } = await supabase
+              .from('groups')
+              .select('name')
+              .eq('id', roleData.group_id)
+              .single();
+              
+            setGroup(groupData?.name || null);
+          }
+        } else {
+          // No role assigned, default to "user"
+          setRole("user");
+        }
       } catch (err) {
-        console.error("Error fetching user role:", err);
+        console.error("Error in useUserRole hook:", err);
         setError(err instanceof Error ? err : new Error("Failed to fetch user role"));
+        // Default to user role on error
+        setRole("user");
       } finally {
         setIsLoading(false);
       }
@@ -61,15 +88,39 @@ export const useUserRole = (): UserRoleData => {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         setUser(session.user);
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role, groups(name)')
-          .eq('user_id', session.user.id)
-          .single();
-        
-        setRole(roleData?.role || "user");
-        // Fix for TypeScript error - access the first item in the groups array if it exists
-        setGroup(roleData?.groups && Array.isArray(roleData.groups) && roleData.groups[0]?.name || null);
+        try {
+          const { data: roleData, error: roleError } = await supabase
+            .from('user_roles')
+            .select('role, group_id')
+            .eq('user_id', session.user.id)
+            .single();
+          
+          if (roleError && roleError.code !== 'PGRST116') {
+            console.warn("Error fetching user role:", roleError);
+            setRole("user");
+          } else if (roleData) {
+            setRole(roleData.role || "user");
+            
+            if (roleData.group_id) {
+              const { data: groupData } = await supabase
+                .from('groups')
+                .select('name')
+                .eq('id', roleData.group_id)
+                .single();
+                
+              setGroup(groupData?.name || null);
+            } else {
+              setGroup(null);
+            }
+          } else {
+            setRole("user");
+            setGroup(null);
+          }
+        } catch (err) {
+          console.error("Error in auth state change:", err);
+          setRole("user");
+          setGroup(null);
+        }
       } else {
         setRole(null);
         setGroup(null);
